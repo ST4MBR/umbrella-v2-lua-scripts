@@ -1,0 +1,270 @@
+local protobuf = require("protobuf")
+local JSON = require("assets.JSON")
+
+local script = {}
+
+local tab =
+    Menu.Create(
+        "General",
+        "Main",
+        "Team Inviter"
+    )
+
+tab:Icon("\u{f0c0}")
+
+
+local group =
+    tab:Create("Team"):Create("Settings")
+
+
+local ui = {}
+
+
+ui.enable =
+    group:Switch(
+        "Enable Team Inviter",
+        false
+    )
+
+
+ui.teamName =
+    group:Input(
+        "Team Name",
+        "Bebra"
+    )
+
+
+ui.teamId =
+    group:Input(
+        "Team ID",
+        "0"
+    )
+
+
+ui.steamId =
+    group:Input(
+        "SteamID64",
+        ""
+    )
+
+
+
+local MSG =
+{
+    CreateTeam = 7115,
+    CreateTeamResponse = 7116,
+
+    Invite = 7122,
+    InviteResponse = 7123,
+
+    InviteFinalResponse = 7198
+}
+
+
+
+local function SendProto(
+    name,
+    id,
+    data
+)
+
+    local msg =
+        protobuf.encodeFromJSON(
+            name,
+            JSON:encode(data)
+        )
+
+
+    if not msg then
+        return false
+    end
+
+
+    GC.SendMessage(
+        msg.binary,
+        id,
+        msg.size
+    )
+
+
+    protobuf.free(
+        msg.binary
+    )
+
+
+    return true
+
+end
+
+
+
+local function CreateTeam()
+
+
+    local name =
+        ui.teamName:Get()
+
+
+    SendProto(
+        "CMsgDOTACreateTeam",
+        MSG.CreateTeam,
+        {
+            name = name
+        }
+    )
+
+end
+
+
+
+local function InvitePlayer()
+
+
+    local steam =
+        tonumber(
+            ui.steamId:Get()
+        )
+
+
+    local team =
+        tonumber(
+            ui.teamId:Get()
+        )
+
+
+    if not steam or not team then
+        return
+    end
+
+
+    local accountId =
+        steam & 0xFFFFFFFF
+
+
+
+    SendProto(
+        "CMsgDOTATeamInvite_InviterToGC",
+        MSG.Invite,
+        {
+            account_id = accountId,
+            team_id = team
+        }
+    )
+
+end
+
+
+
+ui.create =
+    group:Button(
+        "Create Team",
+        function()
+
+            if not ui.enable:Get() then
+                return
+            end
+
+
+            CreateTeam()
+
+        end
+    )
+
+
+
+ui.invite =
+    group:Button(
+        "Send Invite",
+        function()
+
+            if not ui.enable:Get() then
+                return
+            end
+
+
+            InvitePlayer()
+
+        end
+    )
+
+
+
+function script.OnGCMessage(msg)
+
+
+    if msg.msg_type == 7273 then
+        return true
+    end
+
+
+
+    if msg.msg_type ==
+        MSG.CreateTeamResponse
+    then
+
+
+        local json =
+            protobuf.decodeToJSON(
+                "CMsgDOTACreateTeamResponse",
+                msg.binary_buffer_recv,
+                msg.size
+            )
+
+
+        print(json)
+
+    end
+
+
+
+    if msg.msg_type ==
+        MSG.InviteResponse
+    then
+
+
+        local json =
+            protobuf.decodeToJSON(
+                "CMsgDOTATeamInvite_GCImmediateResponseToInviter",
+                msg.binary_buffer_recv,
+                msg.size
+            )
+
+
+        print(json)
+
+    end
+
+
+
+    if msg.msg_type ==
+        MSG.InviteFinalResponse
+    then
+
+
+        local json =
+            protobuf.decodeToJSON(
+                "CMsgDOTATeamInvite_GCResponseToInviter",
+                msg.binary_buffer_recv,
+                msg.size
+            )
+
+
+        print(json)
+
+    end
+
+
+
+    return true
+
+end
+
+
+
+function script.OnUpdate()
+
+end
+
+
+
+return script
