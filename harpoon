@@ -1,0 +1,272 @@
+local HarpoonTree = {}
+
+HarpoonTree.ITEM_NAME = "item_harpoon"
+HarpoonTree.COOLDOWN = 0.5
+HarpoonTree.lastCast = 0
+
+local tab = Menu.Create(
+    "General",
+    "Main",
+    "гарпуня"
+)
+
+tab:Icon("\u{f0c0}")
+
+local group = tab:Create("Settings"):Create("Main")
+
+local enable = group:Switch(
+    "Enable",
+    false
+)
+
+local hotkey = group:Bind(
+    "Hotkey",
+    Enum.ButtonCode.KEY_TAB
+)
+
+local function GetTime()
+
+    if GlobalVars and GlobalVars.GetCurTime then
+        return GlobalVars.GetCurTime()
+    end
+
+    return 0
+end
+
+
+function HarpoonTree.GetHarpoon(hero)
+
+    return NPC.GetItem(
+        hero,
+        HarpoonTree.ITEM_NAME
+    )
+
+end
+
+
+function HarpoonTree.GetRange(item)
+
+    local range = Ability.GetCastRange(item)
+
+    if not range or range <= 0 then
+        range = 700
+    end
+
+    return range
+
+end
+
+
+function HarpoonTree.GetClosestEnemy(hero)
+
+    local heroes = Heroes.GetAll()
+
+    if not heroes then
+        return nil
+    end
+
+    local heroPos = Entity.GetAbsOrigin(hero)
+
+    local closest = nil
+    local minDistance = math.huge
+
+
+    for i = 1, #heroes do
+
+        local enemy = heroes[i]
+
+        if enemy
+        and enemy ~= hero
+        and Entity.IsAlive(enemy)
+        then
+
+            local enemyPos = Entity.GetAbsOrigin(enemy)
+
+            local distance =
+                (enemyPos - heroPos):Length2D()
+
+
+            if distance < minDistance then
+
+                minDistance = distance
+                closest = enemy
+
+            end
+        end
+    end
+
+
+    return closest
+
+end
+
+
+function HarpoonTree.GetBestEscapeTree(hero, enemy, trees)
+
+    if not trees then
+        return nil
+    end
+
+
+    local heroPos = Entity.GetAbsOrigin(hero)
+    local enemyPos = Entity.GetAbsOrigin(enemy)
+
+    local bestTree = nil
+    local bestScore = -999999
+
+
+    for i = 1, #trees do
+
+        local tree = trees[i]
+
+        if tree then
+
+            local treePos = Entity.GetAbsOrigin(tree)
+
+            local enemyDistance =
+                (treePos - enemyPos):Length2D()
+
+            local heroDistance =
+                (treePos - heroPos):Length2D()
+
+
+            local score =
+                enemyDistance - heroDistance
+
+
+            if score > bestScore then
+
+                bestScore = score
+                bestTree = tree
+
+            end
+        end
+    end
+
+
+    return bestTree
+
+end
+
+
+function HarpoonTree.Cast(hero, item, tree)
+
+    local player = Players.GetLocal()
+
+    if not player then
+        return false
+    end
+
+
+    local treePos = Entity.GetAbsOrigin(tree)
+
+
+    Player.PrepareUnitOrders(
+        player,
+        Enum.UnitOrder.DOTA_UNIT_ORDER_CAST_TARGET_TREE,
+        tree,
+        treePos,
+        item,
+        Enum.PlayerOrderIssuer.DOTA_ORDER_ISSUER_HERO_ONLY,
+        hero,
+        false,
+        false,
+        false,
+        true,
+        "harpoon_tree"
+    )
+
+
+    HarpoonTree.lastCast = GetTime()
+
+    return true
+
+end
+
+
+function HarpoonTree.OnUpdate()
+
+    if not enable:Get() then
+        return
+    end
+
+
+    if not hotkey:IsDown() then
+        return
+    end
+
+
+    local time = GetTime()
+
+
+    if time - HarpoonTree.lastCast <
+        HarpoonTree.COOLDOWN then
+        return
+    end
+
+
+    local hero = Heroes.GetLocal()
+
+    if not hero then
+        return
+    end
+
+
+    local harpoon = HarpoonTree.GetHarpoon(hero)
+
+    if not harpoon then
+        return
+    end
+
+
+    if not Ability.IsReady(harpoon) then
+        return
+    end
+
+
+    local range = HarpoonTree.GetRange(harpoon)
+
+
+    local enemy = HarpoonTree.GetClosestEnemy(hero)
+
+    if not enemy then
+        return
+    end
+
+
+    local trees = Entity.GetTreesInRadius(
+        hero,
+        range,
+        true
+    )
+
+
+    if not trees then
+        return
+    end
+
+
+    local tree = HarpoonTree.GetBestEscapeTree(
+        hero,
+        enemy,
+        trees
+    )
+
+
+    if not tree then
+        return
+    end
+
+
+    HarpoonTree.Cast(
+        hero,
+        harpoon,
+        tree
+    )
+
+end
+
+
+return {
+    OnUpdate = HarpoonTree.OnUpdate
+}
